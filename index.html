@@ -205,6 +205,7 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;font-size:1
 .col-sw:hover{transform:scale(1.1)}
 @media(max-width:768px){.g2,.g3,.g4{grid-template-columns:1fr}.s2,.s3,.s4{grid-column:span 1}.tb-date{display:none}.kanban{grid-template-columns:1fr 1fr}}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 </head>
 <body data-t="dark">
 <div class="app">
@@ -565,7 +566,7 @@ function getDecisions() {
 function nextDec() {
   var dec = getDecisions();
   decIdx = (decIdx+1) % Math.max(1,dec.length);
-  nav('dashboard');
+  loadAllData();
 }
 
 // -- CALENDAR --
@@ -837,6 +838,7 @@ function renderWork(c) {
         wDone[id]=!wDone[id];
         this.querySelector('.chk').classList.toggle('done',!!wDone[id]);
         this.querySelector('.ti-text').classList.toggle('done',!!wDone[id]);
+        toggleTaskDone('w', id);
         updateBadges();
       });
     });
@@ -845,6 +847,7 @@ function renderWork(c) {
         ev.stopPropagation();
         var id = parseInt(this.dataset.del);
         workTasks = workTasks.filter(function(t){return t.id!==id});
+        deleteWorkTask(id);
         draw();
         updateBadges();
       });
@@ -971,6 +974,7 @@ function renderBrain(c) {
         ev.stopPropagation();
         var id = parseInt(this.dataset.brainDel);
         brainItems = brainItems.filter(function(x){return x.id!==id});
+        deleteBrainItem(id);
         draw();
       });
     });
@@ -985,7 +989,9 @@ function openBrainAdd() {
     if(!txt) return;
     var tags = ($('brain-tags').value||'').split(',').map(function(t){return t.trim()}).filter(Boolean);
     if(!tags.length) tags = ['note'];
-    brainItems.unshift({id:Date.now(),text:txt,tags:tags,date:'Just now'});
+    var bi={id:Date.now(),text:txt,tags:tags,date:'Just now'};
+    brainItems.unshift(bi);
+    saveBrainItem(bi);
     closeModal();
     nav('brain');
   });
@@ -1032,7 +1038,7 @@ function openDeadlineDetail(id) {
   html += '<tr><td style="color:var(--tx3)">Type</td><td style="text-align:right">'+(dl.hard?'Hard':'Soft')+'</td></tr></table>';
   html += '<div class="macts"><button class="btn-p" onclick="closeModal();alert(\'AI scheduling prep blocks in calendar.\')">Auto-schedule prep</button><button class="btn-r" id="dl-del">Delete</button><button class="btn-s" onclick="closeModal()">Close</button></div>';
   showModal(html);
-  $('dl-del').addEventListener('click', function(){deadlines=deadlines.filter(function(x){return x.id!==id});closeModal();nav('deadlines')});
+  $('dl-del').addEventListener('click', function(){deadlines=deadlines.filter(function(x){return x.id!==id});deleteDeadline(id);closeModal();nav('deadlines')});
 }
 
 function openAddDeadline() {
@@ -1044,7 +1050,9 @@ function openAddDeadline() {
     var type = $('dl-type').value;
     var hard = $('dl-hard').value==='1';
     var days = Math.max(0,Math.ceil((new Date(due)-today)/86400000));
-    deadlines.push({id:Date.now(),title:title,due:due,days:days,type:type==='amazon'?'work':type,hard:hard,amazon:type==='amazon'});
+    var dl={id:Date.now(),title:title,due:due,days:days,type:type==='amazon'?'work':type,hard:hard,amazon:type==='amazon'};
+    deadlines.push(dl);
+    saveDeadline(dl);
     closeModal();
     nav('deadlines');
   });
@@ -1143,15 +1151,15 @@ function renderSuppliersTab() {
 
 function openSKUAdd(stage) {
   showModal('<div class="modal-title">Add SKU to '+stage+'<button class="mx" onclick="closeModal()">x</button></div><div class="mfield"><div class="mlbl">Product name</div><input class="minput" id="sku-n" placeholder="e.g. Bamboo kitchen bundle"/></div><div class="mfield"><div class="mlbl">Notes</div><input class="minput" id="sku-no" placeholder="ASIN, ROI, supplier..."/></div><div class="macts"><button class="btn-p" id="sku-save">Add</button><button class="btn-s" onclick="closeModal()">Cancel</button></div>');
-  $('sku-save').addEventListener('click',function(){skuPipeline.push({id:Date.now(),name:$('sku-n').value,stage:stage,notes:$('sku-no').value});closeModal();nav('growth')});
+  $('sku-save').addEventListener('click',function(){var s={id:Date.now(),name:$('sku-n').value,stage:stage,notes:$('sku-no').value};skuPipeline.push(s);saveSKU(s);closeModal();nav('growth')});
 }
 function openLGAdd() {
   showModal('<div class="modal-title">Add launch goal<button class="mx" onclick="closeModal()">x</button></div><div class="mfield"><div class="mlbl">Goal</div><input class="minput" id="lg-g" placeholder="e.g. Launch 3 Lavarion SKUs"/></div><div class="mfield"><div class="mlbl">Target date</div><input class="minput" type="date" id="lg-b"/></div><div class="macts"><button class="btn-p" id="lg-save">Add</button><button class="btn-s" onclick="closeModal()">Cancel</button></div>');
-  $('lg-save').addEventListener('click',function(){launchGoals.push({id:Date.now(),goal:$('lg-g').value,by:fmtUK($('lg-b').value)});closeModal();nav('growth')});
+  $('lg-save').addEventListener('click',function(){var g={id:Date.now(),goal:$('lg-g').value,by:fmtUK($('lg-b').value)};launchGoals.push(g);saveLaunchGoal(g);closeModal();nav('growth')});
 }
 function openLearnAdd() {
   showModal('<div class="modal-title">Add learning goal<button class="mx" onclick="closeModal()">x</button></div><div class="mfield"><div class="mlbl">What to learn</div><input class="minput" id="li" placeholder="e.g. Complete PPC course"/></div><div class="mfield"><div class="mlbl">Category</div><select class="msel" id="lc"><option>AI &amp; Automation</option><option>Private Label</option><option>Brand &amp; Creative</option><option>Amazon Strategy</option><option>General Business</option></select></div><div class="macts"><button class="btn-p" id="ls">Add</button><button class="btn-s" onclick="closeModal()">Cancel</button></div>');
-  $('ls').addEventListener('click',function(){learningGoals.push({id:Date.now(),item:$('li').value,cat:$('lc').value,done:false});closeModal();nav('growth')});
+  $('ls').addEventListener('click',function(){var l={id:Date.now(),item:$('li').value,cat:$('lc').value,done:false};learningGoals.push(l);saveLearningGoal(l);closeModal();nav('growth')});
 }
 function openBMAdd() {
   showModal('<div class="modal-title">Add brand milestone<button class="mx" onclick="closeModal()">x</button></div><div class="mfield"><div class="mlbl">Milestone</div><input class="minput" id="bm" placeholder="e.g. 10 Lavarion reviews"/></div><div class="mfield"><div class="mlbl">Notes</div><input class="minput" id="bmn" placeholder="Context..."/></div><div class="macts"><button class="btn-p" id="bms">Add</button><button class="btn-s" onclick="closeModal()">Cancel</button></div>');
@@ -1159,7 +1167,7 @@ function openBMAdd() {
 }
 function openSupAdd() {
   showModal('<div class="modal-title">Add supplier<button class="mx" onclick="closeModal()">x</button></div><div class="m2"><div class="mfield"><div class="mlbl">Name</div><input class="minput" id="sn" placeholder="e.g. Chen Packaging"/></div><div class="mfield"><div class="mlbl">Status</div><select class="msel" id="ss"><option>Prospect</option><option>Sampling</option><option>Active</option></select></div></div><div class="mfield"><div class="mlbl">Email / contact</div><input class="minput" id="se" placeholder="email or WeChat"/></div><div class="mfield"><div class="mlbl">Notes</div><input class="minput" id="sno" placeholder="MOQ, lead times..."/></div><div class="macts"><button class="btn-p" id="ssave">Add</button><button class="btn-s" onclick="closeModal()">Cancel</button></div>');
-  $('ssave').addEventListener('click',function(){suppliers.push({id:Date.now(),name:$('sn').value,email:$('se').value,status:$('ss').value,notes:$('sno').value});closeModal();nav('growth')});
+  $('ssave').addEventListener('click',function(){var s={id:Date.now(),name:$('sn').value,email:$('se').value,status:$('ss').value,notes:$('sno').value};suppliers.push(s);saveSupplier(s);closeModal();nav('growth')});
 }
 
 // -- CEO REVIEW --
@@ -1192,7 +1200,7 @@ function renderCEO(c) {
       var text = data.content&&data.content[0]?data.content[0].text:'{}';
       try {
         var parsed = JSON.parse(text.replace(/```json|```/g,'').trim());
-        ceoReviews.unshift(Object.assign({id:Date.now(),week:today.toLocaleDateString('en-GB')},parsed));
+        var cr=Object.assign({id:Date.now(),week:today.toLocaleDateString('en-GB')},parsed);ceoReviews.unshift(cr);saveCEOReview(cr);
         closeModal();
         nav('ceo');
       } catch(e) { closeModal(); alert('Parse error - try again.'); }
@@ -1239,6 +1247,7 @@ function renderPersonal(c) {
         pDone[id]=!pDone[id];
         this.querySelector('.chk').classList.toggle('done',!!pDone[id]);
         this.querySelector('.ti-text').classList.toggle('done',!!pDone[id]);
+        toggleTaskDone('p', id);
         updateBadges();
       });
     });
@@ -1247,6 +1256,7 @@ function renderPersonal(c) {
         ev.stopPropagation();
         var id = parseInt(this.dataset.pdel);
         personalTasks = personalTasks.filter(function(t){return t.id!==id});
+        deletePersonalTask(id);
         draw();
         updateBadges();
       });
@@ -1291,22 +1301,22 @@ function renderPersonalPage(c) {
     var ls = $('log-sess');
     if(ls) ls.addEventListener('click', function() {
       showModal('<div class="modal-title">Log session<button class="mx" onclick="closeModal()">x</button></div><div class="m2"><div class="mfield"><div class="mlbl">Date</div><input class="minput" type="date" id="gs-d" value="'+todayStr+'"/></div><div class="mfield"><div class="mlbl">Duration</div><input class="minput" id="gs-dur" placeholder="e.g. 45 mins"/></div></div><div class="mfield"><div class="mlbl">Activity</div><input class="minput" id="gs-act" placeholder="e.g. Gym - chest and back"/></div><div class="macts"><button class="btn-p" id="gs-save">Save</button><button class="btn-s" onclick="closeModal()">Cancel</button></div>');
-      $('gs-save').addEventListener('click',function(){gymLog.unshift({id:Date.now(),date:$('gs-d').value,activity:$('gs-act').value,duration:$('gs-dur').value});closeModal();draw()});
+      $('gs-save').addEventListener('click',function(){var g={id:Date.now(),date:$('gs-d').value,activity:$('gs-act').value,duration:$('gs-dur').value};gymLog.unshift(g);saveGymLog(g);closeModal();draw()});
     });
     var lsp = $('log-spend');
     if(lsp) lsp.addEventListener('click', function() {
       showModal('<div class="modal-title">Log spending<button class="mx" onclick="closeModal()">x</button></div><div class="mfield"><div class="mlbl">Description</div><input class="minput" id="sp-d" placeholder="e.g. Dinner out"/></div><div class="m2"><div class="mfield"><div class="mlbl">Amount (&pound;)</div><input class="minput" id="sp-a" type="number" placeholder="0"/></div><div class="mfield"><div class="mlbl">Category</div><select class="msel" id="sp-c"><option>Food</option><option>Social</option><option>Health</option><option>Shopping</option><option>Subscriptions</option><option>Other</option></select></div></div><div class="macts"><button class="btn-p" id="sp-save">Save</button><button class="btn-s" onclick="closeModal()">Cancel</button></div>');
-      $('sp-save').addEventListener('click',function(){financeLog.unshift({id:Date.now(),desc:$('sp-d').value,amount:$('sp-a').value,cat:$('sp-c').value});closeModal();draw()});
+      $('sp-save').addEventListener('click',function(){var f={id:Date.now(),desc:$('sp-d').value,amount:$('sp-a').value,cat:$('sp-c').value};financeLog.unshift(f);saveFinanceLog(f);closeModal();draw()});
     });
     var ar = $('add-rem');
     if(ar) ar.addEventListener('click', function() {
       showModal('<div class="modal-title">Add reminder<button class="mx" onclick="closeModal()">x</button></div><div class="mfield"><div class="mlbl">What</div><input class="minput" id="rem-t" placeholder="e.g. Mum\'s birthday"/></div><div class="mfield"><div class="mlbl">When</div><input class="minput" id="rem-w" placeholder="e.g. 15 April or Annual"/></div><div class="macts"><button class="btn-p" id="rem-save">Add</button><button class="btn-s" onclick="closeModal()">Cancel</button></div>');
-      $('rem-save').addEventListener('click',function(){reminders.push({id:Date.now(),title:$('rem-t').value,when:$('rem-w').value});closeModal();draw()});
+      $('rem-save').addEventListener('click',function(){var r={id:Date.now(),title:$('rem-t').value,when:$('rem-w').value};reminders.push(r);saveReminder(r);closeModal();draw()});
     });
     var awl = $('add-wl');
     if(awl) awl.addEventListener('click', function() {
       showModal('<div class="modal-title">Add to wishlist<button class="mx" onclick="closeModal()">x</button></div><div class="mfield"><div class="mlbl">Item</div><input class="minput" id="wl-i" placeholder="e.g. New running trainers"/></div><div class="m2"><div class="mfield"><div class="mlbl">Price (&pound;)</div><input class="minput" id="wl-p" type="number" placeholder="0"/></div><div class="mfield"><div class="mlbl">Notes</div><input class="minput" id="wl-n" placeholder="Link, brand..."/></div></div><div class="macts"><button class="btn-p" id="wl-save">Add</button><button class="btn-s" onclick="closeModal()">Cancel</button></div>');
-      $('wl-save').addEventListener('click',function(){wishlist.push({id:Date.now(),item:$('wl-i').value,price:$('wl-p').value,notes:$('wl-n').value});closeModal();draw()});
+      $('wl-save').addEventListener('click',function(){var w={id:Date.now(),item:$('wl-i').value,price:$('wl-p').value,notes:$('wl-n').value};wishlist.push(w);saveWishlist(w);closeModal();draw()});
     });
     c.querySelectorAll('[data-gym-del]').forEach(function(el) { el.addEventListener('click',function(){gymLog=gymLog.filter(function(x){return x.id!==parseInt(this.dataset.gymDel)},this);draw()}); });
     c.querySelectorAll('[data-rem-del]').forEach(function(el) { el.addEventListener('click',function(){reminders=reminders.filter(function(x){return x.id!==parseInt(this.dataset.remDel)},this);draw()}); });
@@ -1527,13 +1537,15 @@ function saveQA() {
   var cat = $('qa-cat')&&$('qa-cat').value;
   var pri = $('qa-pri')&&$('qa-pri').value||'normal';
   var notes = $('qa-notes')&&$('qa-notes').value||'';
-  if(qaType==='work') workTasks.unshift({id:Date.now(),text:text,cat:cat,pri:pri,notes:notes});
-  else if(qaType==='personal') personalTasks.unshift({id:Date.now(),text:text,cat:cat,pri:pri,notes:notes});
+  var newId = Date.now();
+  if(qaType==='work') { var t={id:newId,text:text,cat:cat,pri:pri,notes:notes}; workTasks.unshift(t); saveWorkTask(t); }
+  else if(qaType==='personal') { var t={id:newId,text:text,cat:cat,pri:pri,notes:notes}; personalTasks.unshift(t); savePersonalTask(t); }
   else {
     var date = $('qa-date')&&$('qa-date').value||todayStr;
     var time = $('qa-time')&&$('qa-time').value||'09:00';
     var isP = ['personal','health','social','home'].indexOf(cat)>-1;
-    events.push({id:Date.now(),date:date,title:text,time:time,dur:60,cat:cat,type:isP?'personal':'work'});
+    var ev={id:newId,date:date,title:text,time:time,dur:60,cat:cat,type:isP?'personal':'work'};
+    events.push(ev); saveEvent(ev);
   }
   closeModal();
   updateBadges();
@@ -1548,9 +1560,10 @@ function openBrainDump() {
   function saveDump(dest) {
     var text = $('bd-text').value.trim();
     if(!text) return;
-    if(dest==='work') workTasks.unshift({id:Date.now(),text:text,cat:'lavarion',pri:'normal',notes:'Brain dump'});
-    else if(dest==='personal') personalTasks.unshift({id:Date.now(),text:text,cat:'personal',pri:'normal',notes:'Brain dump'});
-    else brainItems.unshift({id:Date.now(),text:text,tags:['brain-dump'],date:'Just now'});
+    var bid=Date.now();
+    if(dest==='work'){var t={id:bid,text:text,cat:'lavarion',pri:'normal',notes:'Brain dump'};workTasks.unshift(t);saveWorkTask(t);}
+    else if(dest==='personal'){var t={id:bid,text:text,cat:'personal',pri:'normal',notes:'Brain dump'};personalTasks.unshift(t);savePersonalTask(t);}
+    else{var bi={id:bid,text:text,tags:['brain-dump'],date:'Just now'};brainItems.unshift(bi);saveBrainItem(bi);}
     closeModal();
     updateBadges();
   }
@@ -1567,12 +1580,97 @@ function closeModal() {
   $('modal').innerHTML = '';
 }
 
-// -- SUPABASE CONFIG --
-// Replace these with your Supabase project details:
-// var SUPABASE_URL = 'YOUR_PROJECT_URL';
-// var SUPABASE_KEY = 'YOUR_ANON_KEY';
-// Once set up, add supabase script tag to the head of this file
-// and implement syncData() after each state change
+// -- SUPABASE --
+var SUPABASE_URL = 'https://huufosaxamdpgpksictq.supabase.co';
+var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh1dWZvc2F4YW1kcGdwa3NpY3RxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0MzM4MDUsImV4cCI6MjA5MDAwOTgwNX0.Y4M0ZcMoze-fX-dQ-1AzamQ_PU9F9KfUP__CYQ6fDak';
+var db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+async function loadAllData() {
+  try {
+    var results = await Promise.all([
+      db.from('work_tasks').select('*').order('created_at', {ascending: false}),
+      db.from('personal_tasks').select('*').order('created_at', {ascending: false}),
+      db.from('events').select('*'),
+      db.from('brain_items').select('*').order('created_at', {ascending: false}),
+      db.from('deadlines').select('*').order('created_at', {ascending: false}),
+      db.from('sku_pipeline').select('*'),
+      db.from('launch_goals').select('*'),
+      db.from('learning_goals').select('*'),
+      db.from('suppliers').select('*'),
+      db.from('shopping_list').select('*'),
+      db.from('gym_log').select('*').order('created_at', {ascending: false}),
+      db.from('finance_log').select('*').order('created_at', {ascending: false}),
+      db.from('wishlist').select('*'),
+      db.from('reminders').select('*'),
+      db.from('ceo_reviews').select('*').order('created_at', {ascending: false}),
+      db.from('work_reqs').select('*').order('created_at', {ascending: false}),
+      db.from('personal_reqs').select('*').order('created_at', {ascending: false}),
+    ]);
+    var wt=results[0], pt=results[1], ev=results[2], br=results[3], dl=results[4];
+    var sku=results[5], lg=results[6], learn=results[7], sup=results[8];
+    var sh=results[9], gym=results[10], fin=results[11], wl=results[12];
+    var rem=results[13], ceo=results[14], wreq=results[15], preq=results[16];
+
+    if(wt.data) { workTasks=wt.data; wt.data.forEach(function(t){if(t.done)wDone[t.id]=true;}); }
+    if(pt.data) { personalTasks=pt.data; pt.data.forEach(function(t){if(t.done)pDone[t.id]=true;}); }
+    if(ev.data) events=ev.data;
+    if(br.data) brainItems=br.data;
+    if(dl.data) deadlines=dl.data;
+    if(sku.data) skuPipeline=sku.data;
+    if(lg.data) launchGoals=lg.data;
+    if(learn.data) learningGoals=learn.data;
+    if(sup.data) suppliers=sup.data;
+    if(sh.data) shoppingList=sh.data;
+    if(gym.data) gymLog=gym.data;
+    if(fin.data) financeLog=fin.data;
+    if(wl.data) wishlist=wl.data;
+    if(rem.data) reminders=rem.data;
+    if(ceo.data) ceoReviews=ceo.data;
+    if(wreq.data) workReqs=wreq.data.map(function(r){return r.data});
+    if(preq.data) personalReqs=preq.data.map(function(r){return r.data});
+
+    nav('dashboard');
+  } catch(e) {
+    console.error('Supabase load error:', e);
+    nav('dashboard');
+  }
+}
+
+async function saveWorkTask(task) {
+  await db.from('work_tasks').upsert({id:task.id, text:task.text, cat:task.cat, pri:task.pri, notes:task.notes, done:!!wDone[task.id]});
+}
+async function savePersonalTask(task) {
+  await db.from('personal_tasks').upsert({id:task.id, text:task.text, cat:task.cat, pri:task.pri, notes:task.notes, done:!!pDone[task.id]});
+}
+async function deleteWorkTask(id) { await db.from('work_tasks').delete().eq('id', id); }
+async function deletePersonalTask(id) { await db.from('personal_tasks').delete().eq('id', id); }
+async function saveEvent(event) { await db.from('events').upsert({id:event.id, title:event.title, date:event.date, time:event.time, dur:event.dur, cat:event.cat, type:event.type}); }
+async function deleteEvent(id) { await db.from('events').delete().eq('id', id); }
+async function saveBrainItem(item) { await db.from('brain_items').upsert({id:item.id, text:item.text, tags:item.tags, date:item.date}); }
+async function deleteBrainItem(id) { await db.from('brain_items').delete().eq('id', id); }
+async function saveDeadline(dl) { await db.from('deadlines').upsert({id:dl.id, title:dl.title, due:dl.due, days:dl.days, type:dl.type, hard:dl.hard, amazon:!!dl.amazon}); }
+async function deleteDeadline(id) { await db.from('deadlines').delete().eq('id', id); }
+async function saveSKU(item) { await db.from('sku_pipeline').upsert({id:item.id, name:item.name, stage:item.stage, notes:item.notes}); }
+async function saveLaunchGoal(item) { await db.from('launch_goals').upsert({id:item.id, goal:item.goal, by_date:item.by}); }
+async function deleteLaunchGoal(id) { await db.from('launch_goals').delete().eq('id', id); }
+async function saveLearningGoal(item) { await db.from('learning_goals').upsert({id:item.id, item:item.item, cat:item.cat, done:!!item.done}); }
+async function deleteLearningGoal(id) { await db.from('learning_goals').delete().eq('id', id); }
+async function saveSupplier(item) { await db.from('suppliers').upsert({id:item.id, name:item.name, email:item.email, status:item.status, notes:item.notes}); }
+async function deleteSupplier(id) { await db.from('suppliers').delete().eq('id', id); }
+async function saveShoppingItem(item) { await db.from('shopping_list').upsert({id:item.id||Date.now(), item:item.item, done:!!item.done}); }
+async function clearShoppingList() { await db.from('shopping_list').delete().neq('id', 0); }
+async function saveGymLog(item) { await db.from('gym_log').upsert({id:item.id, date:item.date, activity:item.activity, duration:item.duration}); }
+async function saveFinanceLog(item) { await db.from('finance_log').upsert({id:item.id, description:item.desc, amount:item.amount, cat:item.cat}); }
+async function saveWishlist(item) { await db.from('wishlist').upsert({id:item.id, item:item.item, price:item.price, notes:item.notes}); }
+async function deleteWishlist(id) { await db.from('wishlist').delete().eq('id', id); }
+async function saveReminder(item) { await db.from('reminders').upsert({id:item.id, title:item.title, when_text:item.when}); }
+async function deleteReminder(id) { await db.from('reminders').delete().eq('id', id); }
+async function saveCEOReview(r) { await db.from('ceo_reviews').upsert({id:r.id, week:r.week, forward:r.forward, wasted:r.wasted, cut:r.cut, cash:r.cash, personal:r.personal, lavarion:r.lavarion}); }
+async function toggleTaskDone(type, id) {
+  var tbl = type==='w'?'work_tasks':'personal_tasks';
+  var done = type==='w'?!!wDone[id]:!!pDone[id];
+  await db.from(tbl).update({done:done}).eq('id', id);
+}
 
 window.nav = nav;
 window.toggleSb = toggleSb;
